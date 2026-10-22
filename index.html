@@ -9,6 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 <script>window.msal||document.write('<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"><\/script>')</script>
+<!-- Biblioteca html2pdf.js para conversão client-side de PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
   :root{
     --ink:#0E1A2B; --ink-soft:#8FA2BC;
@@ -137,7 +139,7 @@
   <main class="main">
     <header>
       <h1 id="titulo">Preparando seu documento</h1>
-      <p class="lead">Os dados e as fotos do checklist estão sendo reunidos para o download automático.</p>
+      <p class="lead">Os dados e as fotos do checklist estão sendo reunidos para a geração do PDF.</p>
     </header>
 
     <section class="progress" aria-live="polite">
@@ -159,7 +161,7 @@
       <li class="pending"><span class="mk"><svg class="ic-ok" viewBox="0 0 24 24" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><svg class="ic-x" viewBox="0 0 24 24" fill="none" stroke-width="3.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
         <div><div class="tt">Download das fotos</div><div class="det"></div></div></li>
       <li class="pending"><span class="mk"><svg class="ic-ok" viewBox="0 0 24 24" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><svg class="ic-x" viewBox="0 0 24 24" fill="none" stroke-width="3.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
-        <div><div class="tt">Geração do arquivo</div><div class="det"></div></div></li>
+        <div><div class="tt">Geração do PDF</div><div class="det"></div></div></li>
     </ol>
 
     <div class="actions" id="actions"><button id="btnAcao" type="button">Baixar novamente</button></div>
@@ -217,7 +219,6 @@ const PERGUNTAS = [
   {"n": "27", "pergunta": "Trava do tanque funcionando?", "campo": "Trava_x0020_da_x0020_tampa_x0020", "invertido": false}
 ];
 
-/* Logo placeholder text para testes (sem base64 gigante) */
 const LOGO_HTML = '<div style="font-weight:900;font-size:20px;color:#0F172A;">GRUPO PESSAIA</div>';
 const CSS_RELATORIO = `
   :root {
@@ -226,61 +227,46 @@ const CSS_RELATORIO = `
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;padding:0;background:var(--page-bg);color:var(--ink);-webkit-font-smoothing:antialiased}
-  .toolbar{max-width:920px;margin:20px auto 0;padding:0 8px;text-align:right}
-  .toolbar button{font:600 13px inherit;font-family:inherit;border:1px solid var(--line);background:#fff;color:var(--ink);padding:9px 16px;border-radius:10px;cursor:pointer}
-  .toolbar button:hover{background:var(--soft)}
-  .wrap{max-width:920px;margin:16px auto 48px;background:#fff;border-radius:var(--radius);border:1px solid rgba(15,23,42,.08);overflow:hidden;box-shadow:0 4px 18px rgba(15,23,42,.06)}
+  body{margin:0;padding:0;background:#ffffff;color:var(--ink);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:920px;margin:0 auto;background:#fff;border-radius:var(--radius);overflow:hidden}
   .header{width:100%;border-collapse:collapse}
-  .header td{padding:30px 40px;vertical-align:middle}
+  .header td{padding:24px 32px;vertical-align:middle}
   .title{text-align:right}
-  .title h1{margin:0;font-size:24px;letter-spacing:2px;font-weight:900;line-height:1}
-  .numero{display:inline-block;margin-top:8px;font-size:13px;font-weight:700;background:#f1f5f9;border:1px solid var(--line);padding:5px 14px;border-radius:6px}
+  .title h1{margin:0;font-size:22px;letter-spacing:2px;font-weight:900;line-height:1}
+  .numero{display:inline-block;margin-top:6px;font-size:12px;font-weight:700;background:#f1f5f9;border:1px solid var(--line);padding:4px 12px;border-radius:6px}
   .accent{height:4px;background:#000}
-  .container{padding:32px 40px}
-  .card{border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:22px;break-inside:avoid;page-break-inside:avoid}
-  .card.flow{break-inside:auto;page-break-inside:auto}
-  .section-title{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin:0 0 18px;display:flex;align-items:center;gap:10px}
+  .container{padding:24px 32px}
+  .card{border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:18px;break-inside:avoid;page-break-inside:avoid}
+  .section-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin:0 0 14px;display:flex;align-items:center;gap:10px}
   .section-title:before{content:"";width:3px;height:14px;background:#000;border-radius:2px}
-  .meta{width:100%;border-collapse:separate;border-spacing:10px 10px;margin:-10px}
-  .meta td{border:1px solid var(--line);border-radius:8px;padding:11px 14px;vertical-align:top;width:25%}
-  .label{display:block;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-  .value{font-size:14px;font-weight:500}
-  .tablet{margin-top:16px;padding:14px 16px;border:1px solid var(--line);border-left:4px solid var(--ink);border-radius:8px}
-  .banner{border-radius:12px;padding:16px 18px;margin-bottom:18px;font-size:14px;line-height:1.5}
-  .banner strong{display:block;font-size:15px;margin-bottom:2px}
-  .banner ul{margin:8px 0 0;padding-left:20px}
+  .meta{width:100%;border-collapse:separate;border-spacing:8px 8px;margin:-8px}
+  .meta td{border:1px solid var(--line);border-radius:8px;padding:10px 12px;vertical-align:top;width:25%}
+  .label{display:block;color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+  .value{font-size:13px;font-weight:500}
+  .tablet{margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-left:4px solid var(--ink);border-radius:8px}
+  .banner{border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:13px;line-height:1.4}
+  .banner strong{display:block;font-size:14px;margin-bottom:2px}
+  .banner ul{margin:6px 0 0;padding-left:18px}
   .banner li strong{display:inline;font-size:inherit;margin:0}
   .banner.ok{background:var(--ok-bg);color:var(--ok)}
   .banner.bad{background:var(--bad-bg);color:var(--bad)}
-  .checklist{width:100%;border-collapse:collapse;font-size:14px}
-  .checklist th{background:var(--soft);color:var(--muted);font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.5px;padding:11px 14px;text-align:left;border-bottom:2px solid var(--line)}
-  .checklist td{padding:11px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+  .checklist{width:100%;border-collapse:collapse;font-size:13px}
+  .checklist th{background:var(--soft);color:var(--muted);font-weight:700;text-transform:uppercase;font-size:10px;letter-spacing:.5px;padding:10px 12px;text-align:left;border-bottom:2px solid var(--line)}
+  .checklist td{padding:9px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
   .checklist tbody tr:nth-child(even){background:var(--soft)}
   .checklist tr{break-inside:avoid;page-break-inside:avoid}
-  .checklist td.num{width:44px;color:var(--muted);font-weight:700}
-  .checklist td.st{width:110px}
+  .checklist td.num{width:40px;color:var(--muted);font-weight:700}
+  .checklist td.st{width:100px}
   .checklist tr.is-bad td{background:#fff7f7}
-  .badge{display:inline-block;min-width:64px;text-align:center;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700}
+  .badge{display:inline-block;min-width:60px;text-align:center;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
   .badge.ok{background:var(--ok-bg);color:var(--ok)}
   .badge.bad{background:var(--bad-bg);color:var(--bad)}
-  .photos{display:flex;flex-wrap:wrap;gap:14px}
-  .photo-thumb{width:190px;height:140px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+  .photos{display:flex;flex-wrap:wrap;gap:12px}
+  .photo-thumb{width:160px;height:120px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
   .photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
-  .empty{margin:0;color:var(--muted);font-size:14px}
-  .footer{padding:26px 40px;font-size:12px;color:var(--muted);line-height:1.6;border-top:1px solid var(--line);text-align:center}
+  .empty{margin:0;color:var(--muted);font-size:13px}
+  .footer{padding:20px 32px;font-size:11px;color:var(--muted);line-height:1.5;border-top:1px solid var(--line);text-align:center}
   .footer strong{color:var(--ink)}
-  @page{size:A4;margin:10mm}
-  @media print{
-    html,body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    .toolbar{display:none}
-    .wrap{margin:0;border:0;border-radius:0;box-shadow:none}
-    .header td{padding:20px 28px}
-    .container{padding:20px 28px}
-    .card{padding:18px;margin-bottom:16px}
-    .checklist td{padding:7px 14px}
-    .footer{padding:16px 28px}
-  }
 `;
 
 const $ = id => document.getElementById(id);
@@ -288,7 +274,7 @@ const elStatus = $("status");
 const items = [...document.querySelectorAll("#steps li")];
 const CIRC = 326.73;
 let stepAtual = 0;
-let fileUrl = null, fileName = "";
+let pdfGeradoBlob = null, nomePdf = "";
 
 function setStatus(t, erro){ elStatus.textContent = t; elStatus.className = erro ? "erro" : ""; }
 function setRing(p){
@@ -365,7 +351,7 @@ function fmtData(d, comHora){
     hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"
   }).formatToParts(d).map(x => [x.type, x.value]));
   return comHora === "arquivo"
-    ? p.year + "-" + p.month + "-" + p.day + " " + p.hour + "-" + p.minute + "-" + p.second
+    ? p.year + "-" + p.month + "-" + p.day + "_" + p.hour + "-" + p.minute + "-" + p.second
     : p.day + "/" + p.month + "/" + p.year + " " + p.hour + ":" + p.minute;
 }
 
@@ -396,7 +382,7 @@ async function fotoParaDataUrl(blob){
   }
 }
 
-function montarRelatorio(item, fotos){
+function construirHtmlRelatorio(item, fotos){
   const id = item.ID ?? item.Id;
   const aval = PERGUNTAS.map(p => {
     const v = item[p.campo] === true;
@@ -430,82 +416,76 @@ function montarRelatorio(item, fotos){
 
   const htmlFotos = fotos.map(src => '<div class="photo-thumb"><img src="' + src + '" alt="Foto" /></div>').join("");
 
-  return `<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Checklist Nº ${cab.id} - ${cab.placa}</title>
-<style>${CSS_RELATORIO}</style>
-</head>
-<body>
-  <div class="toolbar"><button type="button" onclick="window.print()">Imprimir / Salvar como PDF</button></div>
-  <div class="wrap">
-    <table class="header" role="presentation">
-      <tr>
-        <td>${LOGO_HTML}</td>
-        <td class="title">
-          <h1>CHECKLIST</h1>
-          <span class="numero">N&ordm;&nbsp;${cab.id}</span>
-        </td>
-      </tr>
-    </table>
-    <div class="accent"></div>
+  return `
+  <div style="background:#ffffff; color:#0f172a; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:10px;">
+    <div class="wrap">
+      <table class="header" role="presentation">
+        <tr>
+          <td>${LOGO_HTML}</td>
+          <td class="title">
+            <h1>CHECKLIST</h1>
+            <span class="numero">N&ordm;&nbsp;${cab.id}</span>
+          </td>
+        </tr>
+      </table>
+      <div class="accent"></div>
 
-    <div class="container">
-      <div class="card">
-        <div class="section-title">Dados Gerais</div>
-        <table class="meta" role="presentation">
-          <tr>
-            <td><span class="label">Placa</span><span class="value">${cab.placa}</span></td>
-            <td><span class="label">Motorista</span><span class="value">${cab.motorista}</span></td>
-            <td><span class="label">Km Saída</span><span class="value">${cab.kmSaida}</span></td>
-            <td><span class="label">Horímetro</span><span class="value">${cab.horimetro}</span></td>
-          </tr>
-          <tr>
-            <td colspan="2"><span class="label">Data do Checklist</span><span class="value">${cab.dataChecklist}</span></td>
-            <td colspan="2"><span class="label">Relatório emitido em</span><span class="value">${cab.emitidoEm}</span></td>
-          </tr>
-        </table>
-        <div class="tablet">
-          <span class="label">Condição do tablet / celular</span>
-          <span class="value">${cab.tablet}</span>
+      <div class="container">
+        <div class="card">
+          <div class="section-title">Dados Gerais</div>
+          <table class="meta" role="presentation">
+            <tr>
+              <td><span class="label">Placa</span><span class="value">${cab.placa}</span></td>
+              <td><span class="label">Motorista</span><span class="value">${cab.motorista}</span></td>
+              <td><span class="label">Km Saída</span><span class="value">${cab.kmSaida}</span></td>
+              <td><span class="label">Horímetro</span><span class="value">${cab.horimetro}</span></td>
+            </tr>
+            <tr>
+              <td colspan="2"><span class="label">Data do Checklist</span><span class="value">${cab.dataChecklist}</span></td>
+              <td colspan="2"><span class="label">Relatório emitido em</span><span class="value">${cab.emitidoEm}</span></td>
+            </tr>
+          </table>
+          <div class="tablet">
+            <span class="label">Condição do tablet / celular</span>
+            <span class="value">${cab.tablet}</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-title">Itens Verificados</div>
+          ${banner}
+          <table class="checklist">
+            <thead><tr><th>#</th><th>Item</th><th>Resposta</th></tr></thead>
+            <tbody>
+              ${linhas}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="section-title">Evidências Fotográficas</div>
+          ${htmlFotos ? '<div class="photos">' + htmlFotos + '</div>' : '<p class="empty">Nenhuma foto anexada a este checklist.</p>'}
         </div>
       </div>
 
-      <div class="card flow">
-        <div class="section-title">Itens Verificados</div>
-        ${banner}
-        <table class="checklist">
-          <thead><tr><th>#</th><th>Item</th><th>Resposta</th></tr></thead>
-          <tbody>
-            ${linhas}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="card">
-        <div class="section-title">Evidências Fotográficas</div>
-        ${htmlFotos ? '<div class="photos">' + htmlFotos + '</div>' : '<p class="empty">Nenhuma foto anexada a este checklist.</p>'}
+      <div class="footer">
+        <strong>Rua João Frederico Foerster, 132</strong> · Pinheirinho · Curitiba/PR<br />
+        Contatos: (41) 3248-4585 / (41) 3248-3717 · comercial@pinheirinhoservicos.com.br
       </div>
     </div>
-
-    <div class="footer">
-      <strong>Rua João Frederico Foerster, 132</strong> · Pinheirinho · Curitiba/PR<br />
-      Contatos: (41) 3248-4585 / (41) 3248-3717 · comercial@pinheirinhoservicos.com.br
-    </div>
-  </div>
-</body>
-</html>`;
+  </div>`;
 }
 
-function baixarArquivo(){
+function baixarPdfSalvo(){
+  if (!pdfGeradoBlob) return;
+  const url = URL.createObjectURL(pdfGeradoBlob);
   const a = document.createElement("a");
-  a.href = fileUrl;
-  a.download = fileName;
+  a.href = url;
+  a.download = nomePdf;
   document.body.appendChild(a);
   a.click();
   a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 async function main(){
@@ -574,22 +554,39 @@ async function main(){
 
   setStep(3);
   setRing(0.85);
-  setStatus("Gerando o arquivo...");
-  setDetail(3, "Montando o relatório");
-  const html = montarRelatorio(item, fotos);
-  const out = new Blob([html], { type: "text/html;charset=utf-8" });
-  fileName = "CHECK-LIST - ID " + id + " - " + fmtData(new Date(), "arquivo") + ".html";
-  fileUrl = URL.createObjectURL(out);
-  baixarArquivo();
-  sessionStorage.removeItem("idPendente");
+  setStatus("Gerando o PDF...");
+  setDetail(3, "Convertendo layout para PDF");
 
-  items.forEach(li => { li.className = "done"; });
-  setDetail(3, fileName);
-  setRing(1);
-  $("ring").classList.add("ok");
-  $("titulo").textContent = "Download concluído";
-  setStatus("Checklist Nº " + id + " salvo em " + fileName + ".\nVocê já pode fechar esta aba.");
-  mostrarAcao("Baixar novamente", baixarArquivo);
+  const htmlContent = construirHtmlRelatorio(item, fotos);
+  const containerTemp = document.createElement("div");
+  containerTemp.innerHTML = htmlContent;
+
+  nomePdf = "CHECK-LIST - ID " + id + " - " + fmtData(new Date(), "arquivo") + ".pdf";
+
+  const opt = {
+    margin:       [5, 5, 5, 5],
+    filename:     nomePdf,
+    image:        { type: 'jpeg', quality: 0.92 },
+    html2canvas:  { scale: 2, useCORS: true, logging: false },
+    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  };
+
+  try {
+    // Gera o PDF diretamente em Blob de forma assídua no navegador
+    pdfGeradoBlob = await html2pdf().from(containerTemp).set(opt).outputPdf('blob');
+    baixarPdfSalvo();
+    sessionStorage.removeItem("idPendente");
+
+    items.forEach(li => { li.className = "done"; });
+    setDetail(3, nomePdf);
+    setRing(1);
+    $("ring").classList.add("ok");
+    $("titulo").textContent = "Download concluído";
+    setStatus("Checklist Nº " + id + " gerado em PDF com sucesso!\nVocê já pode fechar esta aba.");
+    mostrarAcao("Baixar novamente", baixarPdfSalvo);
+  } catch (err) {
+    falhar("Erro ao converter para PDF: " + err.message);
+  }
 }
 
 main().catch(e => { console.error(e); falhar(e.message); });
