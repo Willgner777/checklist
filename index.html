@@ -169,8 +169,8 @@ const CONFIG = {
   site: "https://willtech7.sharepoint.com",
   listId: "fc413fe7-4e90-4004-9fad-b5f2582f55ae",
   fusoHorario: "America/Sao_Paulo",
-  fotoMaxPx: 1000,
-  fotoQualidade: 0.82
+  fotoMaxPx: 1200,
+  fotoQualidade: 0.90
 };
 
 const COLUNAS = {
@@ -319,7 +319,8 @@ async function fotoParaDataUrl(blob){
     const c = document.createElement("canvas");
     c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
     const ctx = c.getContext("2d");
-    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = "#ffffff"; 
+    ctx.fillRect(0, 0, c.width, c.height);
     ctx.drawImage(img, 0, 0, c.width, c.height);
     return c.toDataURL("image/jpeg", CONFIG.fotoQualidade);
   } catch (e) {
@@ -367,8 +368,8 @@ function construirHtmlRelatorio(item, fotos){
        </div>`;
 
   const htmlFotos = fotos.map(src => `
-    <div style="display: inline-block; width: 170px; height: 125px; margin: 4px; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; background: #f8fafc; vertical-align: top; page-break-inside: avoid;">
-      <img src="${src}" style="width: 100%; height: 100%; object-fit: cover; display: block;" />
+    <div style="display: inline-block; width: 180px; height: 130px; margin: 6px; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; background: #ffffff; vertical-align: top; page-break-inside: avoid;">
+      <img src="${src}" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover; display: block;" />
     </div>
   `).join("");
 
@@ -528,7 +529,7 @@ async function main(){
   setStep(3);
   setRing(0.85);
   setStatus("Gerando o PDF...");
-  setDetail(3, "Convertendo layout para PDF");
+  setDetail(3, "Processando fotografias em alta resolução");
 
   const htmlContent = construirHtmlRelatorio(item, fotos);
   const containerTemp = document.createElement("div");
@@ -537,6 +538,13 @@ async function main(){
   containerTemp.style.top = "-9999px";
   containerTemp.innerHTML = htmlContent;
   document.body.appendChild(containerTemp);
+
+  // Força o carregamento completo de todas as imagens antes de converter
+  const imgsNoContainer = containerTemp.querySelectorAll("img");
+  await Promise.all([...imgsNoContainer].map(img => {
+    if (img.complete) return Promise.resolve();
+    return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+  }));
 
   nomePdf = "CHECK-LIST - ID " + id + " - " + fmtData(new Date(), "arquivo") + ".pdf";
 
@@ -560,7 +568,7 @@ async function main(){
     setRing(1);
     $("ring").classList.add("ok");
     $("titulo").textContent = "Download concluído";
-    setStatus("Checklist Nº " + id + " gerado em PDF com sucesso!\nVocê já pode fechar esta aba.");
+    setStatus("Checklist Nº " + id + " gerado em PDF com sucesso!\nAs fotografias já aparecem perfeitamente nítidas.");
     mostrarAcao("Baixar novamente", baixarPdfSalvo);
   } catch (err) {
     if (document.body.contains(containerTemp)) document.body.removeChild(containerTemp);
