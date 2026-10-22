@@ -169,8 +169,12 @@ const CONFIG = {
   site: "https://willtech7.sharepoint.com",
   listId: "fc413fe7-4e90-4004-9fad-b5f2582f55ae",
   fusoHorario: "America/Sao_Paulo",
-  fotoMaxPx: 1000,
-  fotoQualidade: 0.85
+  // Foto já recortada na proporção exata do quadro do PDF (190x140), em 4x para ficar nítida
+  fotoLargura: 760,
+  fotoAltura: 560,
+  fotoQualidade: 0.92,
+  // Limite de pixels do canvas final (protege celulares com pouca memória)
+  maxPixelsCanvas: 12000000
 };
 
 const COLUNAS = {
@@ -300,40 +304,37 @@ function fmtData(d, comHora){
     : p.day + "/" + p.month + "/" + p.year + " " + p.hour + ":" + p.minute;
 }
 
-// Converte o blob da foto estritamente para Base64 DataURL otimizado
+/* Carrega a foto, recorta no formato exato do quadro (efeito "cover") e devolve JPEG em Base64.
+   Como o recorte é feito aqui, o PDF não depende de object-fit (que o html2canvas não renderiza direito). */
 async function fotoParaDataUrl(blob){
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let width = img.width;
-        let height = img.height;
-        const maxDim = CONFIG.fotoMaxPx;
-        
-        if (width > height && width > maxDim) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        } else if (height > maxDim) {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
 
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.fillStyle = "#FFFFFF";
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", CONFIG.fotoQualidade));
-      };
-      img.onerror = () => resolve(reader.result); // Fallback se falhar no resize
-      img.src = reader.result;
-    };
-    reader.onerror = () => resolve("");
-    reader.readAsDataURL(blob);
-  });
+    const W = CONFIG.fotoLargura, H = CONFIG.fotoAltura;
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const escala = Math.max(W / iw, H / ih);
+    const sw = W / escala, sh = H / escala;
+    const sx = (iw - sw) / 2, sy = (ih - sh) / 2;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, W, H);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+    return canvas.toDataURL("image/jpeg", CONFIG.fotoQualidade);
+  } catch (e) {
+    console.warn("Falha ao processar foto", e);
+    return "";
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function construirHtmlRelatorio(item, fotos){
@@ -375,11 +376,8 @@ function construirHtmlRelatorio(item, fotos){
         <strong>✖ ${pend.length} ${pend.length === 1 ? 'item com pendência' : 'itens com pendência'} (de ${aval.length} verificados)</strong>
        </div>`;
 
-  const htmlFotos = fotos.map(src => `
-    <div style="display: inline-block; width: 190px; height: 140px; margin: 5px; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; background: #ffffff; vertical-align: top; page-break-inside: avoid;">
-      <img src="${src}" style="width: 100%; height: 100%; object-fit: cover; display: block;" />
-    </div>
-  `).join("");
+  // Foto já vem recortada em 190x140 (proporção): <img> simples, sem object-fit nem overflow hidden
+  const htmlFotos = fotos.filter(Boolean).map(src => `<img src="${src}" width="190" height="140" style="display: inline-block; width: 190px; height: 140px; margin: 5px; border: 1px solid #cbd5e1; border-radius: 6px; background: #ffffff; vertical-align: top; page-break-inside: avoid;" />`).join("");
 
   return `
   <div style="width: 700px; padding: 20px; background: #ffffff; font-family: Arial, Helvetica, sans-serif; color: #0f172a;">
@@ -470,6 +468,16 @@ function baixarPdfSalvo(){
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
+// Garante que todas as imagens do relatório estejam carregadas e decodificadas antes de gerar o PDF
+async function aguardarImagens(container){
+  const imgs = [...container.querySelectorAll("img")];
+  await Promise.all(imgs.map(img => {
+    if (img.complete && img.naturalWidth > 0) return img.decode ? img.decode().catch(() => {}) : Promise.resolve();
+    return new Promise(res => { img.onload = img.onerror = () => res(); });
+  }));
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+}
+
 async function main(){
   const qs = new URLSearchParams(location.search);
   const qsId = qs.get("id") || qs.get("number") || (qs.get("ids") || "").split(",")[0];
@@ -513,7 +521,7 @@ async function main(){
   setRing(0.2);
 
   setStep(2);
-  const fotos = new Array(imagens.length);
+  const fotos = new Array(imagens.length).fill("");
   let feitos = 0;
   setStatus(imagens.length ? "Baixando fotos: 0 de " + imagens.length : "Sem fotos neste checklist.");
   setDetail(2, imagens.length ? "" : "Nenhuma foto anexada");
@@ -522,10 +530,15 @@ async function main(){
     while (prox < imagens.length){
       const i = prox++;
       const f = imagens[i];
-      const url = CONFIG.site + "/_api/web/GetFileByServerRelativeUrl('" +
-                  encodeURI(f.ServerRelativeUrl.replace(/'/g, "''")) + "')/$value";
-      const blob = await sp(url, token, true);
-      fotos[i] = await fotoParaDataUrl(blob);
+      try {
+        const url = CONFIG.site + "/_api/web/GetFileByServerRelativeUrl('" +
+                    encodeURI(f.ServerRelativeUrl.replace(/'/g, "''")) + "')/$value";
+        const blob = await sp(url, token, true);
+        fotos[i] = await fotoParaDataUrl(blob);
+      } catch (e) {
+        console.warn("Falha ao baixar foto " + f.FileName, e);
+        fotos[i] = "";
+      }
       feitos++;
       setStatus("Baixando fotos: " + feitos + " de " + imagens.length);
       setDetail(2, feitos + " de " + imagens.length + " fotos");
@@ -537,28 +550,35 @@ async function main(){
   setStep(3);
   setRing(0.85);
   setStatus("Gerando o PDF...");
-  setDetail(3, "Renderizando fotografias em Base64");
+  setDetail(3, "Renderizando fotografias em alta qualidade");
 
   const htmlContent = construirHtmlRelatorio(item, fotos);
   const containerTemp = document.createElement("div");
-  containerTemp.style.position = "absolute";
-  containerTemp.style.left = "-9999px";
-  containerTemp.style.top = "-9999px";
+  // Dentro da área visível (atrás da página), para o navegador carregar e desenhar as imagens normalmente
+  containerTemp.style.cssText = "position:fixed; left:0; top:0; z-index:-1; pointer-events:none; background:#ffffff;";
   containerTemp.innerHTML = htmlContent;
   document.body.appendChild(containerTemp);
 
   nomePdf = "CHECK-LIST - ID " + id + " - " + fmtData(new Date(), "arquivo") + ".pdf";
 
-  const opt = {
-    margin:       [8, 8, 8, 8],
-    filename:     nomePdf,
-    image:        { type: 'jpeg', quality: 0.95 },
-    html2canvas:  { scale: 2, useCORS: true, logging: false, allowTaint: true },
-    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-  };
-
   try {
-    pdfGeradoBlob = await html2pdf().from(containerTemp.firstElementChild).set(opt).outputPdf('blob');
+    const el = containerTemp.firstElementChild;
+    await aguardarImagens(containerTemp);
+
+    // Escala máxima (3x) respeitando o limite de pixels do canvas
+    const area = el.offsetWidth * el.offsetHeight;
+    const escala = Math.max(1.5, Math.min(3, Math.sqrt(CONFIG.maxPixelsCanvas / area)));
+
+    const opt = {
+      margin:       [8, 8, 8, 8],
+      filename:     nomePdf,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: escala, useCORS: true, logging: false, backgroundColor: "#ffffff", imageTimeout: 30000, scrollX: 0, scrollY: 0 },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak:    { mode: ['css'], avoid: ['tr', 'img'] }
+    };
+
+    pdfGeradoBlob = await html2pdf().from(el).set(opt).outputPdf('blob');
     document.body.removeChild(containerTemp);
     
     baixarPdfSalvo();
