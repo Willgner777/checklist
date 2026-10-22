@@ -169,8 +169,8 @@ const CONFIG = {
   site: "https://willtech7.sharepoint.com",
   listId: "fc413fe7-4e90-4004-9fad-b5f2582f55ae",
   fusoHorario: "America/Sao_Paulo",
-  fotoMaxPx: 1200,
-  fotoQualidade: 0.90
+  fotoMaxPx: 1000,
+  fotoQualidade: 0.85
 };
 
 const COLUNAS = {
@@ -300,32 +300,40 @@ function fmtData(d, comHora){
     : p.day + "/" + p.month + "/" + p.year + " " + p.hour + ":" + p.minute;
 }
 
-function blobParaDataUrl(blob){
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result);
-    r.onerror = () => rej(new Error("Falha ao ler a foto"));
-    r.readAsDataURL(blob);
-  });
-}
+// Converte o blob da foto estritamente para Base64 DataURL otimizado
 async function fotoParaDataUrl(blob){
-  try {
-    const url = URL.createObjectURL(blob);
-    const img = await new Promise((res, rej) => {
-      const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url;
-    });
-    URL.revokeObjectURL(url);
-    const k = Math.min(1, CONFIG.fotoMaxPx / Math.max(img.naturalWidth, img.naturalHeight));
-    const c = document.createElement("canvas");
-    c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
-    const ctx = c.getContext("2d");
-    ctx.fillStyle = "#ffffff"; 
-    ctx.fillRect(0, 0, c.width, c.height);
-    ctx.drawImage(img, 0, 0, c.width, c.height);
-    return c.toDataURL("image/jpeg", CONFIG.fotoQualidade);
-  } catch (e) {
-    return blobParaDataUrl(blob);
-  }
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+        const maxDim = CONFIG.fotoMaxPx;
+        
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", CONFIG.fotoQualidade));
+      };
+      img.onerror = () => resolve(reader.result); // Fallback se falhar no resize
+      img.src = reader.result;
+    };
+    reader.onerror = () => resolve("");
+    reader.readAsDataURL(blob);
+  });
 }
 
 function construirHtmlRelatorio(item, fotos){
@@ -368,8 +376,8 @@ function construirHtmlRelatorio(item, fotos){
        </div>`;
 
   const htmlFotos = fotos.map(src => `
-    <div style="display: inline-block; width: 180px; height: 130px; margin: 6px; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; background: #ffffff; vertical-align: top; page-break-inside: avoid;">
-      <img src="${src}" crossorigin="anonymous" style="width: 100%; height: 100%; object-fit: cover; display: block;" />
+    <div style="display: inline-block; width: 190px; height: 140px; margin: 5px; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; background: #ffffff; vertical-align: top; page-break-inside: avoid;">
+      <img src="${src}" style="width: 100%; height: 100%; object-fit: cover; display: block;" />
     </div>
   `).join("");
 
@@ -529,7 +537,7 @@ async function main(){
   setStep(3);
   setRing(0.85);
   setStatus("Gerando o PDF...");
-  setDetail(3, "Processando fotografias em alta resolução");
+  setDetail(3, "Renderizando fotografias em Base64");
 
   const htmlContent = construirHtmlRelatorio(item, fotos);
   const containerTemp = document.createElement("div");
@@ -539,20 +547,13 @@ async function main(){
   containerTemp.innerHTML = htmlContent;
   document.body.appendChild(containerTemp);
 
-  // Força o carregamento completo de todas as imagens antes de converter
-  const imgsNoContainer = containerTemp.querySelectorAll("img");
-  await Promise.all([...imgsNoContainer].map(img => {
-    if (img.complete) return Promise.resolve();
-    return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
-  }));
-
   nomePdf = "CHECK-LIST - ID " + id + " - " + fmtData(new Date(), "arquivo") + ".pdf";
 
   const opt = {
     margin:       [8, 8, 8, 8],
     filename:     nomePdf,
-    image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, logging: false },
+    image:        { type: 'jpeg', quality: 0.95 },
+    html2canvas:  { scale: 2, useCORS: true, logging: false, allowTaint: true },
     jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
   };
 
@@ -568,7 +569,7 @@ async function main(){
     setRing(1);
     $("ring").classList.add("ok");
     $("titulo").textContent = "Download concluído";
-    setStatus("Checklist Nº " + id + " gerado em PDF com sucesso!\nAs fotografias já aparecem perfeitamente nítidas.");
+    setStatus("Checklist Nº " + id + " gerado em PDF com sucesso!\nAs fotos foram incorporadas perfeitamente.");
     mostrarAcao("Baixar novamente", baixarPdfSalvo);
   } catch (err) {
     if (document.body.contains(containerTemp)) document.body.removeChild(containerTemp);
